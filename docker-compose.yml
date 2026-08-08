@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  database:
+    image: mysql:8.0
+    container_name: archaeologist-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: software_archaeologist
+      MYSQL_USER: archaeologist
+      MYSQL_PASSWORD: archaeologist_secure_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./database/sample_data.sql:/docker-entrypoint-initdb.d/02-sample_data.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  analyzer:
+    build:
+      context: ./analyzer
+      dockerfile: Dockerfile
+    container_name: archaeologist-analyzer
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+    volumes:
+      - ./tmp/workspace:/app/tmp/workspace
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: archaeologist-backend
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://database:3306/software_archaeologist?useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=archaeologist
+      - SPRING_DATASOURCE_PASSWORD=archaeologist_secure_pass
+      - ANALYZER_SERVICE_URL=http://analyzer:8000
+      - JWT_SECRET=super_secret_jwt_key_software_archaeologist_2026_production_grade_security_key_38_phases
+    depends_on:
+      database:
+        condition: service_healthy
+      analyzer:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: archaeologist-frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
